@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>박물관 유물 챗봇 – A</title>
+</head>
+<body>
+  <h1>유물 A와 대화하기</h1>
+
+  <div id="chat-box"></div>
+
+  <form id="chat-form">
+    <input type="text" id="message" autocomplete="off" required />
+    <button type="submit">보내기</button>
+
+    <!-- 클라이언트 식별 -->
+    <input type="hidden" id="user_id" />
+
+    <!-- 유물 구분 -->
+    <input type="hidden" id="artifact_id" value="a" />
+  </form>
+
+  <script src="/static/a/script.js"></script>
+</body>
+</html>

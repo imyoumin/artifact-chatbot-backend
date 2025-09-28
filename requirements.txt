@@ -1,0 +1,13 @@
+fastapi==0.115.13
+uvicorn[standard]==0.34.3
+
+SQLAlchemy==2.0.41
+psycopg2-binary==2.9.10
+supabase>=2,<3
+
+openai==1.93.0
+elevenlabs==2.6.0
+
+python-dotenv==1.1.1
+Jinja2==3.1.6
+python-multipart==0.0.20
