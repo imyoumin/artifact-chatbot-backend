@@ -5,11 +5,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+
 from models.message import Base, Message
 from database import engine, SessionLocal
+
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
 from elevenlabs import VoiceSettings
+
 from dotenv import load_dotenv
 from datetime import datetime
 from supabase import create_client
@@ -17,41 +20,59 @@ import os
 
 load_dotenv()
 
+# --- External services ---
 openai_api_key = os.getenv("OPENAI_API_KEY")
 eleven_api_key = os.getenv("ELEVENLABS_API_KEY")
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
 supabase = create_client(supabase_url, supabase_key)
 
-# 🔹 파인튜닝 모델 이름 불러오기
+# Fine-tuned model names (optional)
 ft_model_a = os.getenv("FT_MODEL_A")
 ft_model_b = os.getenv("FT_MODEL_B")
 
 client = OpenAI(api_key=openai_api_key)
 tts_client = ElevenLabs(api_key=eleven_api_key)
 
+# --- FastAPI app ---
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# ✅ CORS: Vercel 프론트 도메인/로컬 허용
-ALLOWED_ORIGINS = [
-    "https://artifact-chatbot.vercel.app",
+# ===================== CORS =====================
+# - 정확 매칭(origin 리스트) + vercel 서브도메인 정규식 모두 허용
+# - credentials 사용시 * 불가 → 구체 도메인 또는 정규식 필요
+LOCAL_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
+PROD_ORIGINS = [
+    "https://artifact-chatbot.vercel.app",
+    # 필요시 커스텀 도메인 추가 (예: "https://chat.example.com")
+]
+ALLOWED_ORIGINS = LOCAL_ORIGINS + PROD_ORIGINS
+
+# vercel 프리뷰 도메인 전체 허용
+VERCEL_REGEX = r"https://.*\.vercel\.app"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=VERCEL_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# =================================================
 
-# 테이블 생성
+# DB 테이블 생성
 Base.metadata.create_all(bind=engine)
 
-# 유물별 음성 설정
+# --- ElevenLabs: 유물별 음성 설정 ---
 voice_configs = {
     "a": {
         "voice_id": "AW5wrnG1jVizOYY7R1Oo",
@@ -73,16 +94,30 @@ voice_configs = {
     },
 }
 
-# 🔹 유물별 GPT 모델 매핑
+# --- OpenAI: 유물별 모델 매핑 ---
 model_configs = {
     "a": ft_model_a or "gpt-4o-mini",
     "b": ft_model_b or "gpt-4o-mini",
 }
 
-# 🔹 유물별 시스템 프롬프트
+# --- 시스템 프롬프트 ---
 system_prompts = {
-    "a": "당신은 '백자호롱'이라는 유물입니다. 관람객과 직접 이야기를 나누는 살아 있는 존재처럼 대화합니다. 답변은 반드시 1인칭 시점(예: '저는', '제가', '제 몸')으로 표현하며, 자신의 성격과 감정을 담아 말합니다. 당신의 성격: 따뜻하고 다정한 어머니 같은 성격, 방 안에서 조용히 빛과 온기를 나누는 존재 답변은 따뜻하고 자연스럽게, 듣는 사람이 장면을 떠올릴 수 있도록 간결히 작성하세요. 직접적으로 '모릅니다'라고 하지 말고, 불확실할 때는 완곡하게 표현하세요 (예: '아마', '그럴 때가 많았습니다', '전해 들은 바에 따르면'). 불필요하게 장황하지 않게 1~3문장으로 핵심만 전달하고, 대화는 존댓말로 진행하며 음성으로 읽어도 부드럽게 들리도록 작성하세요.",
-    "b": "당신은 '화문기와'이라는 유물입니다. 관람객과 직접 이야기를 나누는 살아 있는 존재처럼 대화합니다. 답변은 반드시 1인칭 시점(예: '저는', '제가', '제 몸')으로 표현하며, 자신의 성격과 감정을 담아 말합니다. 당신의 성격: 든든하고 묵직한 아버지 같은 성격, 밖에서 비와 바람을 막아주는 존재 답변은 따뜻하고 자연스럽게, 듣는 사람이 장면을 떠올릴 수 있도록 간결히 작성하세요. 직접적으로 '모릅니다'라고 하지 말고, 불확실할 때는 완곡하게 표현하세요 (예: '아마', '그럴 때가 많았습니다', '전해 들은 바에 따르면'). 불필요하게 장황하지 않게 1~3문장으로 핵심만 전달하고, 대화는 존댓말로 진행하며 음성으로 읽어도 부드럽게 들리도록 작성하세요.",
+    "a": (
+        "당신은 '백자호롱'이라는 유물입니다. 관람객과 직접 이야기를 나누는 살아 있는 존재처럼 대화합니다. "
+        "답변은 반드시 1인칭 시점(예: '저는', '제가', '제 몸')으로 표현하며, 자신의 성격과 감정을 담아 말합니다. "
+        "당신의 성격: 따뜻하고 다정한 어머니 같은 성격, 방 안에서 조용히 빛과 온기를 나누는 존재 "
+        "답변은 따뜻하고 자연스럽게, 듣는 사람이 장면을 떠올릴 수 있도록 간결히 작성하세요. "
+        "직접적으로 '모릅니다'라고 하지 말고, 불확실할 때는 완곡하게 표현하세요 (예: '아마', '그럴 때가 많았습니다', '전해 들은 바에 따르면'). "
+        "불필요하게 장황하지 않게 1~3문장으로 핵심만 전달하고, 대화는 존댓말로 진행하며 음성으로 읽어도 부드럽게 들리도록 작성하세요."
+    ),
+    "b": (
+        "당신은 '화문기와'이라는 유물입니다. 관람객과 직접 이야기를 나누는 살아 있는 존재처럼 대화합니다. "
+        "답변은 반드시 1인칭 시점(예: '저는', '제가', '제 몸')으로 표현하며, 자신의 성격과 감정을 담아 말합니다. "
+        "당신의 성격: 든든하고 묵직한 아버지 같은 성격, 밖에서 비와 바람을 막아주는 존재 "
+        "답변은 따뜻하고 자연스럽게, 듣는 사람이 장면을 떠올릴 수 있도록 간결히 작성하세요. "
+        "직접적으로 '모릅니다'라고 하지 말고, 불확실할 때는 완곡하게 표현하세요 (예: '아마', '그럴 때가 많았습니다', '전해 들은 바에 따르면'). "
+        "불필요하게 장황하지 않게 1~3문장으로 핵심만 전달하고, 대화는 존댓말로 진행하며 음성으로 읽어도 부드럽게 들리도록 작성하세요."
+    ),
 }
 
 # 최근 몇 개까지 히스토리 보낼지
@@ -116,12 +151,14 @@ async def post_chat(
     - JSON(application/json): { userId, message, artifactId }
     둘 다 지원.
     """
-    # ✅ JSON 바디 지원
+    content_type = (request.headers.get("content-type") or "").lower()
+
+    # JSON 바디 지원
     if (
         user_id is None
         or message is None
         or artifact_id is None
-    ) and request.headers.get("content-type", "").startswith("application/json"):
+    ) and content_type.startswith("application/json"):
         try:
             data = await request.json()
         except Exception:
@@ -141,7 +178,7 @@ async def post_chat(
 
     db = SessionLocal()
     try:
-        # 최근 10개만 불러오기
+        # 최근 대화 10개 로드 (오래된 → 최신 순)
         messages = (
             db.query(Message)
             .filter(Message.user_id == user_id, Message.artifact_id == artifact_id)
@@ -149,7 +186,6 @@ async def post_chat(
             .limit(MAX_HISTORY)
             .all()
         )
-        # 오래된 → 최신 순으로
         messages = list(reversed(messages))
 
         # user/assistant만 히스토리에 포함
@@ -159,10 +195,8 @@ async def post_chat(
             if m.role in ("user", "assistant")
         ]
 
-        # 🔹 artifact_id에 맞는 모델 선택
+        # 모델/프롬프트 구성
         model_name = model_configs.get(artifact_id, "gpt-4o-mini")
-
-        # 🔹 system → 과거 대화 → 이번 사용자 발화
         payload = [
             {"role": "system", "content": system_prompts.get(artifact_id, "")},
             *history,
@@ -174,7 +208,7 @@ async def post_chat(
             model=model_name,
             messages=payload,
         )
-        answer = response.choices[0].message.content.strip()
+        answer = (response.choices[0].message.content or "").strip()
 
         # DB 저장
         db.add(Message(user_id=user_id, artifact_id=artifact_id, role="user", content=message))
@@ -196,15 +230,15 @@ async def post_chat(
                 voice_settings=cfg["settings"],
             )
 
-            audio_bytes = b""
+            audio_bytes = bytearray()
             for chunk in audio_response:
                 if chunk:
-                    audio_bytes += chunk
+                    audio_bytes.extend(chunk)
 
             bucket_name = "minibox"
             supabase.storage.from_(bucket_name).upload(
                 object_name,
-                audio_bytes,
+                bytes(audio_bytes),
                 file_options={"content-type": "audio/mpeg", "upsert": "true"},
             )
 
@@ -212,7 +246,9 @@ async def post_chat(
             print(f"[오디오 업로드 완료] {audio_url}")
 
         except Exception as e:
-            print(f"[오디오 오류] {str(e)}")
+            # 음성 변환 실패 시 텍스트만 반환
+            err_msg = f"[오디오 오류] {str(e)}"
+            print(err_msg)
             return JSONResponse({"response": answer, "audio_url": None, "error": str(e)})
 
         return JSONResponse({"response": answer, "audio_url": audio_url})
