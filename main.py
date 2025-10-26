@@ -75,7 +75,7 @@ Base.metadata.create_all(bind=engine)
 # --- ElevenLabs: 유물별 음성 설정 ---
 voice_configs = {
     "a": {
-        "voice_id": "AW5wrnG1jVizOYY7R1Oo",
+        "voice_id": "ETPP7D0aZVdEj12Aa7ho",
         "settings": VoiceSettings(
             stability=0.3,
             similarity_boost=0.8,
@@ -84,12 +84,12 @@ voice_configs = {
         ),
     },
     "b": {
-        "voice_id": "EXAVITQu4vr4xnSDxMaL",
+        "voice_id": "BbsagRO6ohd8MKPS2Ob0",
         "settings": VoiceSettings(
-            stability=0.5,
+            stability=0.3,
             similarity_boost=0.7,
-            style=0.2,
-            use_speaker_boost=False,
+            style=0.1,
+            use_speaker_boost=True,
         ),
     },
 }
